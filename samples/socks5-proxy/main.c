@@ -46,7 +46,11 @@ int main(int argc, char **argv) {
   config.bind_host = DEFAULT_BIND_HOST;
   config.bind_port = DEFAULT_BIND_PORT;
   config.idle_timeout = DEFAULT_IDLE_TIMEOUT;
-  parse_opts(&config, argc, argv);
+  //parse_opts(&config, argc, argv);
+
+  config.bind_port = 9000;
+  config.bind_host = "0.0.0.0";
+  config.idle_timeout = 300;
 
   err = server_run(&config, uv_default_loop());
   if (err) {
@@ -63,7 +67,7 @@ const char *_getprogname(void) {
 static void parse_opts(server_config *cf, int argc, char **argv) {
   int opt;
 
-  while (-1 != (opt = getopt(argc, argv, "b:hp:"))) {
+ /* while (-1 != (opt = getopt(argc, argv, "b:hp:"))) {
     switch (opt) {
       case 'b':
         cf->bind_host = optarg;
@@ -79,7 +83,7 @@ static void parse_opts(server_config *cf, int argc, char **argv) {
       default:
         usage();
     }
-  }
+  }*/
 }
 
 static void usage(void) {
