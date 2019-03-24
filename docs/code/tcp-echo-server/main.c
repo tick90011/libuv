@@ -33,13 +33,21 @@ void echo_write(uv_write_t *req, int status) {
     if (status) {
         fprintf(stderr, "Write error %s\n", uv_strerror(status));
     }
+
+	if (req->data != NULL) {
+		free(req->data);
+	}
     free_write_req(req);
 }
 
 void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
     if (nread > 0) {
         write_req_t *req = (write_req_t*) malloc(sizeof(write_req_t));
-        req->buf = uv_buf_init(buf->base, nread);
+		req->req.data = (void*)buf->base;
+
+		char *str = _strdup("zhourunfa echo");
+
+		req->buf = uv_buf_init(str, strlen(str));
         uv_write((uv_write_t*) req, client, &req->buf, 1, echo_write);
         return;
     }

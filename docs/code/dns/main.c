@@ -6,7 +6,7 @@
 uv_loop_t *loop;
 
 void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-  buf->base = malloc(suggested_size);
+  buf->base = (char*)malloc(suggested_size);
   buf->len = suggested_size;
 }
 
@@ -71,6 +71,7 @@ int main() {
     uv_getaddrinfo_t resolver;
     fprintf(stderr, "irc.freenode.net is... ");
     int r = uv_getaddrinfo(loop, &resolver, on_resolved, "irc.freenode.net", "6667", &hints);
+	//uv_getnameinfo()
 
     if (r) {
         fprintf(stderr, "getaddrinfo call error %s\n", uv_err_name(r));

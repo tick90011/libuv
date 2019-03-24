@@ -10,7 +10,7 @@ uv_udp_t send_socket;
 uv_udp_t recv_socket;
 
 void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-  buf->base = malloc(suggested_size);
+  buf->base = (char*)malloc(suggested_size);
   buf->len = suggested_size;
 }
 
@@ -53,7 +53,7 @@ uv_buf_t make_discover_msg() {
     // HOPS
     buffer.base[3] = 0x0;
     // XID 4 bytes
-    buffer.base[4] = (unsigned int) random();
+    buffer.base[4] = (unsigned int) rand();
     // SECS
     buffer.base[8] = 0x0;
     // FLAGS
@@ -102,6 +102,8 @@ void on_send(uv_udp_send_t *req, int status) {
 }
 
 int main() {
+	srand(9999);
+
     loop = uv_default_loop();
 
     uv_udp_init(loop, &recv_socket);
