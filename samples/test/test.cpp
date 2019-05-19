@@ -222,6 +222,7 @@ namespace n_timer
 		printf("uv_timer_callback in[%d]--- %d\n",data, count++);
 
 
+/*
 		if (data == 2 && count >100)
 		{
 			uv_timer_stop(handle);
@@ -231,7 +232,7 @@ namespace n_timer
 			uv_timer_init(handle->loop, pTimer);
 			pTimer->data = pTimer;
 			uv_timer_start(pTimer, uv_timer_callback, 1000, 1);
-		}
+		}*/
 
 	}
 
@@ -244,12 +245,25 @@ namespace n_timer
 		uv_timer_t uv_timer;
 		uv_timer_init(loop, &uv_timer);
 		uv_timer.data = (void*)1;
-		uv_timer_start(&uv_timer, uv_timer_callback, 0, 1);
 
+		/*
+		* Start the timer. `timeout` and `repeat` are in milliseconds.
+		*
+		* If timeout is zero, the callback fires on the next tick of the event loop.
+		*
+		* If repeat is non-zero, the callback fires first after timeout milliseconds
+		* and then repeatedly after repeat milliseconds.
+		*/
+
+		//timeout : 延时多长时间启动
+		//repeat: 间隔多长时间执行一次
+		uv_timer_start(&uv_timer, uv_timer_callback, 0,1000);
+
+/*
 		uv_timer_t uv_timer2;
 		uv_timer_init(loop, &uv_timer2);
 		uv_timer2.data = (void*)2;
-		uv_timer_start(&uv_timer2, uv_timer_callback, 1100, 1);
+		uv_timer_start(&uv_timer2, uv_timer_callback, 0, 5000);*/
 
 		uv_run(loop, UV_RUN_DEFAULT);
 
@@ -305,17 +319,154 @@ namespace n_thread
 		uv_thread_create(&thread, uv_thread_callback, NULL);
 
 		uv_thread_join(&thread);
+	}
+}
+
+
+namespace n_queue_work
+{
+#define FIB_UNTIL 10
+	void func(uv_work_t *req) 
+	{
+		int n = *(int *)req->data;
+		Sleep(1000 * n);
+
+		printf("call n=%d\n", n);
+	}
+
+	void after_func(uv_work_t *req, int status) {
+		printf("after_func n=%d\n", *(int*)(req->data));
+	}
+
+	void main()
+	{
+		uv_loop_t *loop = uv_default_loop();
+
+		int data[FIB_UNTIL];
+		uv_work_t req[FIB_UNTIL];
+		int i;
+		for (i = 0; i < FIB_UNTIL; i++) {
+			data[i] = i;
+			req[i].data = (void *)&data[i];
+			uv_queue_work(loop, &req[i], func, after_func);
+		}
+
+		uv_run(loop, UV_RUN_DEFAULT);
+	}
+
+}
+
+
+namespace n_progress
+{
+	uv_loop_t *loop;
+	uv_async_t async;
+
+	double percentage;
+
+	void fake_download(uv_work_t *req) 
+	{
+		int size = *((int*)req->data);
+		int downloaded = 0;
+		while (downloaded < size) 
+		{
+			percentage = downloaded * 100.0 / size;
+			async.data = (void*)&percentage;
+
+
+			/*
+			应该注意: 消息的发送是异步的,回调函数应该在另外一个线程调用了 uv_async_send 后立即被调用, 
+			或者在稍后的某个时刻被调用. libuv 也有可能多次调用 uv_async_send 而只调用了一次回调函数.
+			libuv 可以保证: 线程在调用了 uv_async_send 之后回调函数可至少被调用一次. 如果你没有未调用的 
+			uv_async_send, 那么回调函数也不会被调用. 
+			如果你调用了两次(以上)的 uv_async_send, 而 libuv 暂时还没有机会运行回调函数, 
+			则 libuv 可能 会在多次调用 uv_async_send 后 只调用一次 回调函数, 你的回调函数绝对不会在一次事件中被调用两次(或多次).
+			*/
+			uv_async_send(&async);
+
+			Sleep(10);
+
+			downloaded += (200 + rand()) % 1000; // can only download max 1000bytes/sec,
+												   // but at least a 200;
+		}
+	}
+
+	void after(uv_work_t *req, int status) 
+	{
+		fprintf(stderr, "Download complete\n");
+		uv_close((uv_handle_t*)&async, NULL);
+	}
+
+	void print_progress(uv_async_t *handle) 
+	{
+		double percentage = *((double*)handle->data);
+		fprintf(stderr, "Downloaded %.2f%%\n", percentage);
+	}
+
+	int main() 
+	{
+		srand(NULL);
+
+		loop = uv_default_loop();
+
+		uv_work_t req;
+		int size = 10240;
+		req.data = (void*)&size;
+
+		uv_async_init(loop, &async, print_progress);
+		uv_queue_work(loop, &req, fake_download, after);
+
+		return uv_run(loop, UV_RUN_DEFAULT);
+	}
+}
+
+namespace n_process
+{
+	void on_exit(uv_process_t* process, int64_t exit_status, int term_signal)
+	{
+
+		printf("on_exit %d %d\n", (int)exit_status, term_signal);
+		uv_close((uv_handle_t*)process,NULL);
 
 	}
 
+	void main()
+	{
+		uv_loop_t *loop = uv_default_loop();
+		uv_process_t process;
+		uv_process_options_t options;
+
+		char* args[3];
+		args[0] = "mkdir";
+		args[1] = "testdir";
+		args[2] = NULL;
+
+		options.exit_cb = on_exit;
+		options.file = "mkdir";
+		options.args = args;
+		options.flags = 0;
+
+		int ret = uv_spawn(loop, &process, &options);
+		if (ret) {
+			fprintf(stderr, "%s\n", uv_strerror(ret));
+			return ;
+		}
+
+		 uv_run(loop, UV_RUN_DEFAULT);
+	}
 
 
 }
 
 
-
 int main()
 {
+
+	n_process::main();
+
+	//n_progress::main();
+
+	//n_queue_work::main();
 
 	//n_timer::main();
 
@@ -323,7 +474,7 @@ int main()
 
 	//n_interface::main();
 
-	n_thread::main();
+	//n_thread::main();
 
 	return 0;
 }
