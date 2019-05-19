@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <uv.h>
 #include <assert.h>
+#include <string>
 
 /*
 
@@ -459,10 +460,236 @@ namespace n_process
 }
 
 
+namespace n_tty
+{
+	uv_loop_t *loop;
+	uv_tty_t tty;
+	int main() {
+		loop = uv_default_loop();
+
+		uv_tty_init(loop, &tty, 0, 0);
+		uv_tty_set_mode(&tty, UV_TTY_MODE_NORMAL);
+
+		if (uv_guess_handle(1) == UV_TTY) {
+			uv_write_t req;
+			uv_buf_t buf;
+			buf.base = "\033[41;37m";
+			buf.len = strlen(buf.base);
+			uv_write(&req, (uv_stream_t*)&tty, &buf, 1, NULL);
+		}
+
+		uv_write_t req;
+		uv_buf_t buf;
+		buf.base = "Hello TTY\n";
+		buf.len = strlen(buf.base);
+		uv_write(&req, (uv_stream_t*)&tty, &buf, 1, NULL);
+		uv_tty_reset_mode();
+		return uv_run(loop, UV_RUN_DEFAULT);
+	}
+}
+
+namespace n_tty2
+{
+	uv_loop_t *loop;
+	uv_tty_t tty;
+	uv_timer_t tick;
+	uv_write_t write_req;
+	int width, height;
+	int pos = 0;
+	char *message = "  Hello TTY  ";
+
+	void update(uv_timer_t *req) {
+		char data[500];
+
+		uv_buf_t buf;
+		buf.base = data;
+		buf.len = sprintf(data, "\033[2J\033[H\033[%dB\033[%luC\033[42;37m%s",
+			pos,
+			(unsigned long)(width - strlen(message)) / 2,
+			message);
+		uv_write(&write_req, (uv_stream_t*)&tty, &buf, 1, NULL);
+
+		pos++;
+		if (pos > height) {
+			uv_tty_reset_mode();
+			uv_timer_stop(&tick);
+		}
+	}
+
+	int main() {
+		loop = uv_default_loop();
+
+		uv_tty_init(loop, &tty, 0, 0);
+		uv_tty_set_mode(&tty, 0);
+
+		if (uv_tty_get_winsize(&tty, &width, &height)) {
+			fprintf(stderr, "Could not get TTY information\n");
+			uv_tty_reset_mode();
+			return 1;
+		}
+
+		fprintf(stderr, "Width %d, height %d\n", width, height);
+		uv_timer_init(loop, &tick);
+		uv_timer_start(&tick, update, 200, 200);
+		return uv_run(loop, UV_RUN_DEFAULT);
+	}
+}
+
+namespace n_monitor
+{
+	uv_loop_t *loop;
+	const char *command;
+
+	void run_command(uv_fs_event_t *handle, const char *filename, int events, int status) {
+		char path[1024];
+		size_t size = 1023;
+		// Does not handle error if path is longer than 1023.
+		uv_fs_event_getpath(handle, path, &size);
+		path[size] = '\0';
+
+		fprintf(stderr, "Change detected in %s: ", path);
+		if (events & UV_RENAME)
+			fprintf(stderr, "renamed");
+		if (events & UV_CHANGE)
+			fprintf(stderr, "changed");
+
+		fprintf(stderr, " %s\n", filename ? filename : "");
+		//system(command);
+	}
+
+	void main()
+	{
+		loop = uv_default_loop();
+
+		uv_fs_event_t *fs_event_req = (uv_fs_event_t*)malloc(sizeof(uv_fs_event_t));
+		uv_fs_event_init(loop, fs_event_req);
+		// The recursive flag watches subdirectories too.
+		uv_fs_event_start(fs_event_req, run_command, "d:\\", UV_FS_EVENT_RECURSIVE);
+
+		uv_run(loop, UV_RUN_DEFAULT);
+	}
+}
+
+namespace n_net_tcp
+{
+	typedef struct {
+		uv_write_t req;
+		uv_buf_t buf;
+	} write_req_t;
+
+	void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) 
+	{
+		buf->base = (char*)malloc(suggested_size);
+		buf->len = suggested_size;
+	}
+
+	void on_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) 
+	{
+		if (nread < 0) 
+		{
+			if (nread != UV_EOF) {
+				fprintf(stderr, "Read error %s\n", uv_err_name(nread));
+			}
+
+			uv_close((uv_handle_t*)client, NULL);
+			free(buf->base);
+			free(client);
+			return;
+		}
+
+		fprintf(stderr, "%s", buf->base);
+	}
+
+	void on_write(uv_write_t* req, int status)
+	{
+		if (status < 0)
+		{
+
+		}
+
+
+
+		uv_read_start((uv_stream_t*)req->handle, alloc_buffer, on_read);
+	
+	}
+
+	void on_connect(uv_connect_t *req, int status) 
+	{
+		if (status < 0) 
+		{
+			fprintf(stderr, "connect failed error %s\n", uv_err_name(status));
+			free(req);
+
+			uv_close((uv_handle_t*)req, NULL);
+			return;
+		}
+
+		const char* pGet = "GET / HTTP/1.0\r\nHOST:www.baidu.com\r\n\r\n";
+
+
+// 		write_req_t *write_req = (write_req_t*)malloc(sizeof(write_req_t));
+// 		write_req->req.data = (void*)buf->base;
+
+
+		uv_buf_t buf  = uv_buf_init((char*)strdup(pGet), strlen(pGet));
+
+		uv_write_t *pWriteReq = (uv_write_t *)malloc(sizeof(uv_write_t));
+		int res = uv_write(pWriteReq, (uv_stream_t*)req, &buf, 1, on_write);
+		if (res)
+		{
+			const char *pError = uv_err_name(res);
+			printf("uv_write error %s\n", pError);
+			free(pWriteReq);
+			
+			return;
+		}
+
+		req->data = (void*)pWriteReq;
+	}
+
+
+	void main()
+	{
+		uv_loop_t *loop = uv_default_loop();
+
+		uv_tcp_t client;
+		uv_tcp_init(loop, &client);
+
+		int res = 0;
+		sockaddr_in	ClientAddr;
+		hostent* pHostent = 	gethostbyname("192.168.1.102");
+
+		ClientAddr.sin_family = AF_INET;
+		ClientAddr.sin_port = htons(1234);
+		ClientAddr.sin_addr = *((struct in_addr *)pHostent->h_addr);
+
+		uv_connect_t connect;
+		res = uv_tcp_connect(&connect, &client, (sockaddr*)&ClientAddr, on_connect);
+		if (res) {
+			const char *pError = uv_err_name(res);
+			printf("uv_tcp_connect error %s\n", pError);
+			return;
+		}
+
+		uv_run(loop, UV_RUN_DEFAULT);
+	}
+
+
+}
+
+
 int main()
 {
 
-	n_process::main();
+	n_net_tcp::main();
+
+
+	//n_monitor::main();
+
+
+	//n_tty2::main();
+
+	//n_process::main();
 
 	//n_progress::main();
 
