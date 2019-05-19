@@ -23,7 +23,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
+//#include <unistd.h>
 #include <errno.h>
 #include <uv.h>
 #include "encrypt.h"
@@ -580,13 +580,14 @@ int main(int argc, char *argv[])
 	uv_loop_t *loop = uv_default_loop();
 	uv_tcp_t listener;
 
-	struct sockaddr_in6 addr = uv_ip6_addr(server_listen, server_port);
+	struct sockaddr_in6 addr;
+	n = uv_ip6_addr(server_listen, server_port, &addr);
 
 	n = uv_tcp_init(loop, &listener);
 	if (n)
 		SHOW_UV_ERROR_AND_EXIT(loop);
 
-	n = uv_tcp_bind6(&listener, addr);
+	n = uv_tcp_bind(&listener, &addr,0);
 	if (n)
 		SHOW_UV_ERROR_AND_EXIT(loop);
 

@@ -54,7 +54,7 @@ void signal_cb(uv_signal_t* handle, int signum)
 
 void setup_signal_handler(uv_loop_t *loop)
 {
-	signal(SIGPIPE, SIG_IGN);
+//	signal(SIGPIPE, SIG_IGN);
 	
 	uv_signal_t *hup = (uv_signal_t *)malloc(sizeof(uv_signal_t));
 	if (!hup)

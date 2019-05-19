@@ -1,0 +1,128 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>序言 &#8212; An Introduction to libuv</title>
+    
+    <link rel="stylesheet" href="_static/haiku.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '1.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="author" title="About these documents" href="about.html" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="An Introduction to libuv" href="index.html" />
+    <link rel="next" title="Libuv 基础" href="basics.html" />
+    <link rel="prev" title="本书目录" href="index.html" />
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-33699076-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </head>
+  <body role="document">
+      <div class="header" role="banner"><h1 class="heading"><a href="index.html">
+          <span>An Introduction to libuv</span></a></h1>
+        <h2 class="heading"><span>序言</span></h2>
+      </div>
+      <div class="topnav" role="navigation" aria-label="top navigation">
+      
+        <p>
+        «&#160;&#160;<a href="index.html">本书目录</a>
+        &#160;&#160;::&#160;&#160;
+        <a class="uplink" href="index.html">Contents</a>
+        &#160;&#160;::&#160;&#160;
+        <a href="basics.html">Libuv 基础</a>&#160;&#160;»
+        </p>
+
+      </div>
+      <div class="content">
+        
+        
+  <div class="section" id="id1">
+<h1>序言<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h1>
+<p>本书由一系列 <a class="reference external" href="https://github.com/joyent/libuv">libuv</a> 教程组成， <a class="reference external" href="https://github.com/joyent/libuv">libuv</a>
+是一个高性能事件驱动的程序库，封装了 Windows 和 Unix 平台一些底层特性，为开发者提供了统一的 API.</p>
+<p>本书旨在涵盖 libuv 的主要特性, 并不是一份完整介绍 libuv 内部每个 API 和数据结构的指南,
+官方文档 <a class="reference external" href="https://github.com/joyent/libuv/blob/master/include/uv.h">official libuv documentation</a> 可以直接在 libuv 源码提供的头文件中找到.</p>
+<p>本书还没有完成，某些章节可能不完整，但我希望在我不断完善本书同时，你也能够从中获益 :-)</p>
+<div class="section" id="id2">
+<h2>本书为谁而写?<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
+<p>如果你正在阅读本书，你或许是:</p>
+<ol class="arabic simple">
+<li>系统开发人员, 编写一些诸如守护进程(daemons), 网络服务程序或者客户端等底层应用,
+你发现 libuv 的事件循环方式适合你的应用场景, 因此你决定使用 libuv.</li>
+<li>Node.js 某一模块的作者, 决定使用 C/C++ 封装系统平台某些同步或者异步 API,
+并将其暴露给 Javascript, 你可以在 node.js 上下文中只使用 libuv,
+但你也需要参考其他资源, 因为本书并没有包括 v8/node.js 相关的内容.</li>
+</ol>
+<p>本书假设你对 C 语言有了一定的了解。</p>
+</div>
+<div class="section" id="id3">
+<h2>背景<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h2>
+<p><a class="reference external" href="http://www.nodejs.org">node.js</a> 最初发起于 2009 年, 是一个可以让 Javascript 代码脱离浏览器的执行环境,
+libuv 使用了 Google 的  <a class="reference external" href="http://code.google.com/p/v8/">V8</a> 执行引擎 和 Marc Lehmann 的 <a class="reference external" href="http://software.schmorp.de/pkg/libev.html">libev</a>. Node.js
+将事件驱动的 I/O 模型与适合该模型的编程语言(Javascript)融合在了一起,
+随着 node.js 的日益流行, node.js 的开发者们也意识到应该让 node.js
+在 Windows 平台下也能工作, 但是 libev 只能在 Unix 环境下运行.
+Windows 平台上与 kqueue(FreeBSD) 或者 (e)poll(Linux) 等内核事件通知相应的机制
+是 IOCP, libuv 依据不同平台的特性(Unix 平台为 libev, Windows 平台为 IOCP)
+给上层应用提供了统一基于 libev API 的抽象,
+不过 node-v0.9.0 版本的 libuv 中 libev 的依赖已被移除, 参见: <a class="reference external" href="https://github.com/joyent/libuv/issues/485">libev has been removed</a>
+libuv 直接与 Unix 平台交互.</p>
+</div>
+<div class="section" id="id4">
+<h2>本书代码<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h2>
+<p>本书所有代码均可以在 Github 上获取, <a class="reference external" href="https://github.com/forhappy/uvbook">Clone</a>/<a class="reference external" href="https://github.com/forhappy/uvbook/downloads">Download</a> 本书源码，然后进入到
+<code class="docutils literal"><span class="pre">code/</span></code> 目录执行 <code class="docutils literal"><span class="pre">make</span></code> 编译本书的例子. 书中的代码基于 <a class="reference external" href="https://github.com/joyent/libuv/tags">node-v0.9.8</a> 版本的 libuv,
+为了方便读者学习，本书的源码中也附带了相应版本的 libuv，你可以在 <code class="docutils literal"><span class="pre">libuv/</span></code>
+目录中找到源码，libuv 会在你编译书中的例子时被自动编译。</p>
+</div>
+</div>
+
+
+      </div>
+      <div class="bottomnav" role="navigation" aria-label="bottom navigation">
+      
+        <p>
+        «&#160;&#160;<a href="index.html">本书目录</a>
+        &#160;&#160;::&#160;&#160;
+        <a class="uplink" href="index.html">Contents</a>
+        &#160;&#160;::&#160;&#160;
+        <a href="basics.html">Libuv 基础</a>&#160;&#160;»
+        </p>
+
+      </div>
+
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2012, Nikhil Marathe.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5a1.
+    </div>
+  </body>
+</html>

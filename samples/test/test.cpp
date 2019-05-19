@@ -148,6 +148,189 @@ void test_runCmd()
 // 
 */
 
+namespace n_async
+{
+	uv_async_t async;
+	uv_async_t async2;
+	uv_loop_t* loop;
+
+
+	void close_cb(uv_handle_t* handle)
+	{
+		printf("close the async handle!\n");
+	}
+
+	void async_cb(uv_async_t* handle)
+	{
+		printf("async_cb called!\n");
+		uv_thread_t id = uv_thread_self();
+		printf("thread id:%lu.\n", (unsigned long)id);
+		uv_close((uv_handle_t*)&async, close_cb);	//如果async没有关闭，消息队列是会阻塞的
+	}
+
+	/*
+	void async_cb2(uv_async_t* handle)
+	{
+	printf("async_cb called!\n");
+	uv_thread_t id = uv_thread_self();
+	printf("thread id:%lu.\n", (unsigned long)id);
+	uv_close((uv_handle_t*)&async2, close_cb);	//如果async没有关闭，消息队列是会阻塞的
+	}*/
+
+	void sub_thread(void* arg)
+	{
+		uv_thread_t id = uv_thread_self();
+		printf("sub thread id:%lu.\n", id);
+		uv_async_send(&async);
+	}
+
+
+	int main()
+	{
+		loop = uv_default_loop();
+
+		uv_thread_t id = uv_thread_self();
+		printf("thread id:%lu.\n", id);
+
+
+		uv_async_init(loop, &async, async_cb);
+
+		//创建子线程
+		uv_thread_t thread;
+		uv_thread_create(&thread, sub_thread, NULL);
+
+		uv_run(loop, UV_RUN_DEFAULT);
+		uv_thread_join(&thread);	//等待子线程完成
+
+
+		return 0;
+	}
+}
+
+namespace n_timer
+{
+	int count = 0;
+
+	void handle_close(uv_handle_t* handle)
+	{
+		printf("handle_close============\n ");
+	}
+
+	void uv_timer_callback(uv_timer_t* handle)
+	{
+		int data = (int)(handle->data);
+		printf("uv_timer_callback in[%d]--- %d\n",data, count++);
+
+
+		if (data == 2 && count >100)
+		{
+			uv_timer_stop(handle);
+			uv_close((uv_handle_t*)handle, handle_close);
+
+			uv_timer_t *pTimer = new uv_timer_t();
+			uv_timer_init(handle->loop, pTimer);
+			pTimer->data = pTimer;
+			uv_timer_start(pTimer, uv_timer_callback, 1000, 1);
+		}
+
+	}
+
+
+	void main()
+	{
+
+		uv_loop_t *loop = uv_default_loop();
+
+		uv_timer_t uv_timer;
+		uv_timer_init(loop, &uv_timer);
+		uv_timer.data = (void*)1;
+		uv_timer_start(&uv_timer, uv_timer_callback, 0, 1);
+
+		uv_timer_t uv_timer2;
+		uv_timer_init(loop, &uv_timer2);
+		uv_timer2.data = (void*)2;
+		uv_timer_start(&uv_timer2, uv_timer_callback, 1100, 1);
+
+		uv_run(loop, UV_RUN_DEFAULT);
+
+	}
+}
+
+
+namespace n_interface
+{
+	int main() {
+		char buf[512];
+		uv_interface_address_t *info;
+		int count, i;
+
+		uv_interface_addresses((uv_interface_address_t**)&info, &count);
+		i = count;
+
+		printf("Number of interfaces: %d\n", count);
+		while (i--) {
+			uv_interface_address_t IInterface = info[i];
+
+			printf("Name: %s\n", IInterface.name);
+			printf("Internal? %s\n", IInterface.is_internal ? "Yes" : "No");
+
+			if (IInterface.address.address4.sin_family == AF_INET) {
+				uv_ip4_name(&IInterface.address.address4, buf, sizeof(buf));
+				printf("IPv4 address: %s\n", buf);
+			}
+			else if (IInterface.address.address4.sin_family == AF_INET6) {
+				uv_ip6_name(&IInterface.address.address6, buf, sizeof(buf));
+				printf("IPv6 address: %s\n", buf);
+			}
+
+			printf("\n");
+		}
+
+		uv_free_interface_addresses(info, count);
+		return 0;
+	}
+}
+
+namespace n_thread
+{
+
+	void uv_thread_callback(void* arg)
+	{
+		printf("thread %d %d called\n", uv_thread_self(),GetCurrentThreadId());
+	}
+
+	void main()
+	{
+		uv_thread_t thread;
+		uv_thread_create(&thread, uv_thread_callback, NULL);
+
+		uv_thread_join(&thread);
+
+	}
+
+
+
+}
+
+
+
+int main()
+{
+
+	//n_timer::main();
+
+	//n_async::main();
+
+	//n_interface::main();
+
+	n_thread::main();
+
+	return 0;
+}
+
+
+
+
 //tcp
 //#include "../../docs/code/tcp-echo-server/main.c"
 
@@ -156,4 +339,12 @@ void test_runCmd()
 
 
 //dns
-#include "../../docs/code/dns/main.c"
+//#include "../../docs/code/dns/main.c"
+
+
+//网络接口
+//#include "../../docs/code/interfaces/main.c"
+
+
+
+

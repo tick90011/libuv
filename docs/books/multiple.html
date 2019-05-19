@@ -1,0 +1,135 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>多路事件循环(Multiple event loops) &#8212; An Introduction to libuv</title>
+    
+    <link rel="stylesheet" href="_static/haiku.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '1.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="author" title="About these documents" href="about.html" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="An Introduction to libuv" href="index.html" />
+    <link rel="next" title="工具集" href="utilities.html" />
+    <link rel="prev" title="进程" href="processes.html" />
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-33699076-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </head>
+  <body role="document">
+      <div class="header" role="banner"><h1 class="heading"><a href="index.html">
+          <span>An Introduction to libuv</span></a></h1>
+        <h2 class="heading"><span>多路事件循环(Multiple event loops)</span></h2>
+      </div>
+      <div class="topnav" role="navigation" aria-label="top navigation">
+      
+        <p>
+        «&#160;&#160;<a href="processes.html">进程</a>
+        &#160;&#160;::&#160;&#160;
+        <a class="uplink" href="index.html">Contents</a>
+        &#160;&#160;::&#160;&#160;
+        <a href="utilities.html">工具集</a>&#160;&#160;»
+        </p>
+
+      </div>
+      <div class="content">
+        
+        
+  <div class="section" id="multiple-event-loops">
+<h1>多路事件循环(Multiple event loops)<a class="headerlink" href="#multiple-event-loops" title="Permalink to this headline">¶</a></h1>
+<p>你也可以在同一个线程中使用多路事件循环, 但意义并不大, 因为调用其中某一个事件循环的
+<code class="docutils literal"><span class="pre">uv_run</span></code> 会使得程序阻塞, 其他事件循环不能同时运行.
+不过也可以小心地通过多次调用 <cite>uv_run_once()</cite> 来完成一些有趣的工作.</p>
+<div class="section" id="modality">
+<h2>多路事件循环的形式(Modality)<a class="headerlink" href="#modality" title="Permalink to this headline">¶</a></h2>
+<p>你可以在你的程序中按照相对标准方式使用多路事件循环, 即第二个事件循环先暂停第一个事件循环,
+直到发生了动作(用户按下了 Return(Enter) 键, 或者发生了新的事件等).</p>
+</div>
+<div class="section" id="one-loop-per-thread">
+<h2>各线程拥有自己的事件循环(One loop per thread)<a class="headerlink" href="#one-loop-per-thread" title="Permalink to this headline">¶</a></h2>
+<p><code class="docutils literal"><span class="pre">One</span> <span class="pre">loop</span> <span class="pre">per</span> <span class="pre">thread</span></code> 才是多路事件循环的&#8217;标准模型&#8217;, 它和我们在
+<a class="reference internal" href="processes.html"><span class="doc">进程</span></a> 一章中介绍的产生多个进程方式并无太大区别.</p>
+<div class="section" id="sing-two-loops-for-synchronization">
+<h3>使用两个事件循环来同步(sing two loops for synchronization)<a class="headerlink" href="#sing-two-loops-for-synchronization" title="Permalink to this headline">¶</a></h3>
+<p>也有一些比较特殊的应用场景需要两个事件循环来进行同步(而不是使用条件变量),
+在 <a class="reference external" href="https://github.com/nikhilm/node-taglib">node-taglib</a> 库中我就使用了这种同步机制.
+具体的应用场景如下:</p>
+<ol class="arabic simple">
+<li>主线程 <em>main thread</em> 通过 <cite>uv_queue_work</cite> 在工作线程中调用一个阻塞函数.</li>
+<li>工作线程 <em>worker thread</em> 调用一个自定义函数, 并且自定义函数必须在主线程中运行.</li>
+<li>工作线程一直等待, 直到函数返回.</li>
+</ol>
+<p>如果使用条件变量来实现:</p>
+<ol class="arabic simple">
+<li>工作线程并不直接调用自定义函数, 而是创建一个 <code class="docutils literal"><span class="pre">uv_async_t</span></code> 句柄,
+然后由该句柄的回调函数调用自定义函数.</li>
+<li>初始化条件变量.</li>
+<li>使用 <cite>uv_async_send()</cite> 获得主线程(运行事件循环的线程)并由主线程调用该函数.</li>
+<li>等待条件变量的通知.</li>
+<li>回调函数调用自定义函数, 并向条件变量发送通知, 使得工作线程得以继续下去.</li>
+</ol>
+<p>而事件循环的实现方式为:</p>
+<ol class="arabic simple">
+<li>在工作线程中创建一个新的事件循环.</li>
+<li>将 <cite>uv_async_t</cite> 与事件循环相关联.</li>
+<li>将该句柄通过 <cite>uv_async_t</cite> 结构 <cite>data</cite> 字段传递给主线程.</li>
+<li><cite>uv_run()</cite> 运行事件循环, 此时程序会阻塞, 因为异步句柄自增了它的
+<a class="reference internal" href="utilities.html#reference-count"><span class="std std-ref">refcount</span></a>.</li>
+<li>主线程的回调函数再调用自定义函数,然后调用 <cite>uv_async_send</cite>
+向事件循环的异步句柄发送消息.</li>
+<li>异步句柄的回调函数关闭自己, 然后事件循环的引用计数减为 0, <cite>uv_run</cite> 返回, 工作线程得以继续下去.</li>
+</ol>
+</div>
+</div>
+</div>
+
+
+      </div>
+      <div class="bottomnav" role="navigation" aria-label="bottom navigation">
+      
+        <p>
+        «&#160;&#160;<a href="processes.html">进程</a>
+        &#160;&#160;::&#160;&#160;
+        <a class="uplink" href="index.html">Contents</a>
+        &#160;&#160;::&#160;&#160;
+        <a href="utilities.html">工具集</a>&#160;&#160;»
+        </p>
+
+      </div>
+
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2012, Nikhil Marathe.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5a1.
+    </div>
+  </body>
+</html>

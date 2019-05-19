@@ -49,7 +49,7 @@ void md5(const uint8_t *text, uint8_t *message)
 static void merge(uint8_t *arr, int start, int end, int mid, int ei, uint64_t keynum)
 {
 	int asize = mid - start + 1;
-	uint8_t a[asize];
+	uint8_t *a = malloc(sizeof(uint8_t) * asize);
 	memcpy(a, arr + start, asize);
 	uint8_t *b = arr;
 	uint8_t *result = arr;
@@ -81,6 +81,10 @@ static void merge(uint8_t *arr, int start, int end, int mid, int ei, uint64_t ke
 		result[k] = b[j];
 		j++;
 		k++;
+	}
+
+	if (a != 0) {
+		free(a);
 	}
 }
 
