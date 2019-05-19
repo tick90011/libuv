@@ -572,83 +572,98 @@ namespace n_monitor
 
 namespace n_net_tcp
 {
-	typedef struct {
-		uv_write_t req;
-		uv_buf_t buf;
-	} write_req_t;
+	uv_loop_t *loop;
 
-	void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) 
+	void on_connect(uv_connect_t *req, int status);
+	void on_write_end(uv_write_t *req, int status);
+
+
+	void echo_read(uv_stream_t* stream,
+		ssize_t nread,
+		const uv_buf_t* buf)
 	{
-		buf->base = (char*)malloc(suggested_size);
-		buf->len = suggested_size;
-	}
-
-	void on_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) 
-	{
-		if (nread < 0) 
-		{
-			if (nread != UV_EOF) {
-				fprintf(stderr, "Read error %s\n", uv_err_name(nread));
-			}
-
-			uv_close((uv_handle_t*)client, NULL);
-			free(buf->base);
-			free(client);
+		if (nread == -1) {
+			fprintf(stderr, "error echo_read");
 			return;
 		}
 
-		fprintf(stderr, "%s", buf->base);
+		printf("result: %s\n", buf->base);
 	}
 
-	void on_write(uv_write_t* req, int status)
+	void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t* buf) 
 	{
-		if (status < 0)
-		{
+		char *p = (char*)malloc(suggested_size);
+		memset(p, 0, suggested_size);
+		 *buf = uv_buf_init(p, suggested_size);
+	}
 
+	void on_write_end(uv_write_t *req, int status) 
+	{
+		if (status == -1) {
+			fprintf(stderr, "error on_write_end");
+			return;
 		}
 
-
-
-		uv_read_start((uv_stream_t*)req->handle, alloc_buffer, on_read);
-	
+		uv_read_start(req->handle, alloc_buffer, echo_read);
 	}
 
 	void on_connect(uv_connect_t *req, int status) 
 	{
-		if (status < 0) 
-		{
-			fprintf(stderr, "connect failed error %s\n", uv_err_name(status));
-			free(req);
-
-			uv_close((uv_handle_t*)req, NULL);
+		if (status == -1) {
+			fprintf(stderr, "error on_write_end");
 			return;
 		}
 
-		const char* pGet = "GET / HTTP/1.0\r\nHOST:www.baidu.com\r\n\r\n";
+		char *message = "GET /index.html HTTP/1.1\r\n"\
+			"Host: www.baidu.com\r\n"\
+			"Connection : keep - alive\r\n"\
+			"User - Agent : Mozilla / 5.0 (Windows NT 6.1; Win64; x64) AppleWebKit / 537.36 (KHTML, like Gecko) Chrome / 70.0.3538.77 Safari / 537.36\r\n"\
+			"DNT : 1\r\n"\
+			"Accept : image / webp, image / apng, image/*,*/*; q = 0.8\r\n"\
+			"Accept - Encoding: gzip, deflate, br\r\n"\
+			"Accept - Language : zh - CN, zh; q = 0.9, en; q = 0.8\r\n\r\n";
+		int len = strlen(message);
 
+		uv_buf_t buf;
 
-// 		write_req_t *write_req = (write_req_t*)malloc(sizeof(write_req_t));
-// 		write_req->req.data = (void*)buf->base;
+		buf.len = len;
+		buf.base = _strdup(message);
 
+		uv_stream_t* tcp = req->handle;
 
-		uv_buf_t buf  = uv_buf_init((char*)strdup(pGet), strlen(pGet));
+		uv_write_t *pwrite_req = new uv_write_t();
 
-		uv_write_t *pWriteReq = (uv_write_t *)malloc(sizeof(uv_write_t));
-		int res = uv_write(pWriteReq, (uv_stream_t*)req, &buf, 1, on_write);
-		if (res)
-		{
-			const char *pError = uv_err_name(res);
-			printf("uv_write error %s\n", pError);
-			free(pWriteReq);
-			
-			return;
-		}
+		int buf_count = 1;
+		uv_write(pwrite_req, tcp, &buf, buf_count, on_write_end);
+	}
 
-		req->data = (void*)pWriteReq;
+	int main(void) 
+	{
+
+		loop = uv_default_loop();
+
+		uv_tcp_t client;
+
+		uv_tcp_init(loop, &client);
+
+		struct sockaddr_in req_addr;
+		//uv_ip4_addr("127.0.0.1", 1234, &req_addr);
+
+		hostent* pHostent = gethostbyname("www.baidu.com");
+
+		req_addr.sin_family = AF_INET;
+		req_addr.sin_port = htons(80);
+		req_addr.sin_addr = *((struct in_addr *)pHostent->h_addr);
+
+		uv_connect_t connect_req;
+
+		uv_tcp_connect(&connect_req, &client, (sockaddr*)&req_addr, on_connect);
+
+		return uv_run(loop,UV_RUN_DEFAULT);
 	}
 
 
-	void main()
+	/*void main()
 	{
 		uv_loop_t *loop = uv_default_loop();
 
@@ -672,7 +687,7 @@ namespace n_net_tcp
 		}
 
 		uv_run(loop, UV_RUN_DEFAULT);
-	}
+	}*/
 
 
 }
