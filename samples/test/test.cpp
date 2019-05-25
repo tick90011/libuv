@@ -7,6 +7,7 @@
 #include <uv.h>
 #include <assert.h>
 #include <string>
+/*#include "vld.h"*/
 
 /*
 
@@ -588,6 +589,19 @@ namespace n_net_tcp
 		}
 
 		printf("result: %s\n", buf->base);
+
+		uv_tcp_t *pTcp = (uv_tcp_t*)stream;	
+		if (pTcp->data != NULL)
+		{
+			uv_write_t *pWriteCtx = (uv_write_t*)(pTcp->data);
+			if (pWriteCtx) {
+				delete pWriteCtx;
+				pTcp->data = NULL;
+			}
+		}
+
+		free(buf->base);
+		uv_close((uv_handle_t*)stream, NULL);
 	}
 
 	void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t* buf) 
@@ -599,12 +613,24 @@ namespace n_net_tcp
 
 	void on_write_end(uv_write_t *req, int status) 
 	{
-		if (status == -1) {
+		if (status == 0) 
+		{
+			req->handle->data = req;
+			uv_read_start(req->handle, alloc_buffer, echo_read);
+		}
+		else
+		{
 			fprintf(stderr, "error on_write_end");
-			return;
+
+			uv_close((uv_handle_t*)req, NULL);
 		}
 
-		uv_read_start(req->handle, alloc_buffer, echo_read);
+	lend:
+		if (req->data != NULL)
+		{
+			free(req->data);
+			req->data = NULL;
+		}
 	}
 
 	void on_connect(uv_connect_t *req, int status) 
@@ -627,9 +653,9 @@ namespace n_net_tcp
 		uv_buf_t buf;
 
 		buf.len = len;
-		buf.base = _strdup(message);
+		buf.base = message;
 
-		uv_stream_t* tcp = req->handle;
+		uv_stream_t* tcp = req->handle; //这个handle 就是uv_tcp_t 对象指针
 
 		uv_write_t *pwrite_req = new uv_write_t();
 
