@@ -3,7 +3,7 @@
 #include <string.h>
 #include <uv.h>
 
-#define DEFAULT_PORT 7000
+#define DEFAULT_PORT 1234
 #define DEFAULT_BACKLOG 128
 
 uv_loop_t *loop;
@@ -16,7 +16,7 @@ typedef struct {
 
 void free_write_req(uv_write_t *req) {
     write_req_t *wr = (write_req_t*) req;
-    free(wr->buf.base);
+    //free(wr->buf.base);
     free(wr);
 }
 
@@ -34,27 +34,32 @@ void echo_write(uv_write_t *req, int status) {
         fprintf(stderr, "Write error %s\n", uv_strerror(status));
     }
 
-	if (req->data != NULL) {
-		free(req->data);
-	}
     free_write_req(req);
 }
 
-void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
-    if (nread > 0) {
+void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) 
+{
+	if (nread > 0) {
         write_req_t *req = (write_req_t*) malloc(sizeof(write_req_t));
-		req->req.data = (void*)buf->base;
 
-		char *str = _strdup("zhourunfa echo");
+		free(buf->base);
 
+
+		//这个地方可以写栈上的数据. 因为WSASend会拷贝这块数据. 释放没关系
+		char *str = "zhourunfa echo";
 		req->buf = uv_buf_init(str, strlen(str));
         uv_write((uv_write_t*) req, client, &req->buf, 1, echo_write);
         return;
     }
-    if (nread < 0) {
-        if (nread != UV_EOF)
-            fprintf(stderr, "Read error %s\n", uv_err_name(nread));
-        uv_close((uv_handle_t*) client, on_close);
+
+    if (nread < 0) 
+	{
+		if (nread != UV_EOF) {
+			fprintf(stderr, "Read error %s\n", uv_err_name(nread));
+		}
+  
+		//nread=UV_EOF 表示用户close 了这个socket
+		uv_close((uv_handle_t*) client, on_close);
     }
 
     free(buf->base);

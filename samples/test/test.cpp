@@ -7,6 +7,9 @@
 #include <uv.h>
 #include <assert.h>
 #include <string>
+#include "pipe_client.hpp"
+#include "pipe_server.hpp"
+#include "tcp_client.hpp"
 /*#include "vld.h"*/
 
 /*
@@ -333,11 +336,11 @@ namespace n_queue_work
 		int n = *(int *)req->data;
 		Sleep(1000 * n);
 
-		printf("call n=%d\n", n);
+		printf("call n=%d ThreadHandle %d\n", n,(int)uv_thread_self());
 	}
 
 	void after_func(uv_work_t *req, int status) {
-		printf("after_func n=%d\n", *(int*)(req->data));
+		printf("after_func n=%d  ThreadHandle %d\n", *(int*)(req->data), (int)uv_thread_self());
 	}
 
 	void main()
@@ -361,21 +364,29 @@ namespace n_queue_work
 
 namespace n_progress
 {
-	uv_loop_t *loop;
-	uv_async_t async;
 
 	double percentage;
 
+	struct ctx
+	{
+		uv_work_t req;
+		int size;
+		int current;
+		uv_async_t pAsync;
+	};
+
+
 	void fake_download(uv_work_t *req) 
 	{
-		int size = *((int*)req->data);
+		ctx *pCtx = (ctx *)req;
+		int size = pCtx->size;
+
 		int downloaded = 0;
 		while (downloaded < size) 
 		{
 			percentage = downloaded * 100.0 / size;
-			async.data = (void*)&percentage;
-
-
+			pCtx->pAsync.data = (void *)&percentage;
+	
 			/*
 			应该注意: 消息的发送是异步的,回调函数应该在另外一个线程调用了 uv_async_send 后立即被调用, 
 			或者在稍后的某个时刻被调用. libuv 也有可能多次调用 uv_async_send 而只调用了一次回调函数.
@@ -384,19 +395,38 @@ namespace n_progress
 			如果你调用了两次(以上)的 uv_async_send, 而 libuv 暂时还没有机会运行回调函数, 
 			则 libuv 可能 会在多次调用 uv_async_send 后 只调用一次 回调函数, 你的回调函数绝对不会在一次事件中被调用两次(或多次).
 			*/
-			uv_async_send(&async);
+			uv_async_send(&(pCtx->pAsync));
 
 			Sleep(10);
 
 			downloaded += (200 + rand()) % 1000; // can only download max 1000bytes/sec,
-												   // but at least a 200;
+										   // but at least a 200;
+		}
+
+		percentage = 100;
+		pCtx->pAsync.data = (void *)&percentage;
+		uv_async_send(&(pCtx->pAsync));
+	}
+
+
+	void on_close(uv_handle_t* handle)
+	{
+		if (handle != NULL)
+		{
+			uv_async_t *p = (uv_async_t*)handle;
+			if (p) {
+				ctx *pCtx = (ctx*)p->data;
+				delete pCtx;
+			}
 		}
 	}
 
 	void after(uv_work_t *req, int status) 
 	{
+		ctx *pCtx = (ctx *)req;
+		pCtx->pAsync.data = (void*)pCtx;
 		fprintf(stderr, "Download complete\n");
-		uv_close((uv_handle_t*)&async, NULL);
+		uv_close((uv_handle_t*)(&(pCtx->pAsync)), on_close);
 	}
 
 	void print_progress(uv_async_t *handle) 
@@ -409,14 +439,14 @@ namespace n_progress
 	{
 		srand(NULL);
 
-		loop = uv_default_loop();
+		uv_loop_t *loop = uv_default_loop();
 
-		uv_work_t req;
-		int size = 10240;
-		req.data = (void*)&size;
+		ctx *pCtx = new ctx();
+		pCtx->size = 10240;
+		pCtx->current = 0;
 
-		uv_async_init(loop, &async, print_progress);
-		uv_queue_work(loop, &req, fake_download, after);
+		uv_async_init(loop, &(pCtx->pAsync), print_progress);
+		uv_queue_work(loop, (uv_work_t*)pCtx, fake_download, after);
 
 		return uv_run(loop, UV_RUN_DEFAULT);
 	}
@@ -571,158 +601,92 @@ namespace n_monitor
 	}
 }
 
-namespace n_net_tcp
+
+
+
+namespace n_signal
 {
-	uv_loop_t *loop;
-
-	void on_connect(uv_connect_t *req, int status);
-	void on_write_end(uv_write_t *req, int status);
+	#define  SIGUSR1 1
 
 
-	void echo_read(uv_stream_t* stream,
-		ssize_t nread,
-		const uv_buf_t* buf)
+	uv_loop_t* create_loop()
 	{
-		if (nread == -1) {
-			fprintf(stderr, "error echo_read");
-			return;
+		uv_loop_t *loop = (uv_loop_t *)malloc(sizeof(uv_loop_t));
+		if (loop) {
+			uv_loop_init(loop);
 		}
-
-		printf("result: %s\n", buf->base);
-
-		uv_tcp_t *pTcp = (uv_tcp_t*)stream;	
-		if (pTcp->data != NULL)
-		{
-			uv_write_t *pWriteCtx = (uv_write_t*)(pTcp->data);
-			if (pWriteCtx) {
-				delete pWriteCtx;
-				pTcp->data = NULL;
-			}
-		}
-
-		free(buf->base);
-		uv_close((uv_handle_t*)stream, NULL);
+		return loop;
 	}
 
-	void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t* buf) 
+	void signal_handler(uv_signal_t *handle, int signum)
 	{
-		char *p = (char*)malloc(suggested_size);
-		memset(p, 0, suggested_size);
-		 *buf = uv_buf_init(p, suggested_size);
+		printf("Signal received: %d\n", signum);
+		uv_signal_stop(handle);
 	}
 
-	void on_write_end(uv_write_t *req, int status) 
+	// two signal handlers in one loop
+	void thread1_worker(void *userp)
 	{
-		if (status == 0) 
-		{
-			req->handle->data = req;
-			uv_read_start(req->handle, alloc_buffer, echo_read);
-		}
-		else
-		{
-			fprintf(stderr, "error on_write_end");
+		uv_loop_t *loop1 = create_loop();
 
-			uv_close((uv_handle_t*)req, NULL);
-		}
+		uv_signal_t sig1a, sig1b;
+		uv_signal_init(loop1, &sig1a);
+		uv_signal_start(&sig1a, signal_handler, SIGUSR1);
 
-	lend:
-		if (req->data != NULL)
-		{
-			free(req->data);
-			req->data = NULL;
+		uv_signal_init(loop1, &sig1b);
+		uv_signal_start(&sig1b, signal_handler, SIGUSR1);
+
+		uv_run(loop1, UV_RUN_DEFAULT);
+	}
+
+	// two signal handlers, each in its own loop
+	void thread2_worker(void *userp)
+	{
+		uv_loop_t *loop2 = create_loop();
+		uv_loop_t *loop3 = create_loop();
+
+		uv_signal_t sig2;
+		uv_signal_init(loop2, &sig2);
+		uv_signal_start(&sig2, signal_handler, SIGUSR1);
+
+		uv_signal_t sig3;
+		uv_signal_init(loop3, &sig3);
+		uv_signal_start(&sig3, signal_handler, SIGUSR1);
+
+		while (uv_run(loop2, UV_RUN_NOWAIT) || uv_run(loop3, UV_RUN_NOWAIT)) {
 		}
 	}
 
-	void on_connect(uv_connect_t *req, int status) 
+	int main()
 	{
-		if (status == -1) {
-			fprintf(stderr, "error on_write_end");
-			return;
-		}
+		printf("PID %d\n", getpid());
 
-		char *message = "GET /index.html HTTP/1.1\r\n"\
-			"Host: www.baidu.com\r\n"\
-			"Connection : keep - alive\r\n"\
-			"User - Agent : Mozilla / 5.0 (Windows NT 6.1; Win64; x64) AppleWebKit / 537.36 (KHTML, like Gecko) Chrome / 70.0.3538.77 Safari / 537.36\r\n"\
-			"DNT : 1\r\n"\
-			"Accept : image / webp, image / apng, image/*,*/*; q = 0.8\r\n"\
-			"Accept - Encoding: gzip, deflate, br\r\n"\
-			"Accept - Language : zh - CN, zh; q = 0.9, en; q = 0.8\r\n\r\n";
-		int len = strlen(message);
+		uv_thread_t thread1, thread2;
 
-		uv_buf_t buf;
+		uv_thread_create(&thread1, thread1_worker, 0);
+		uv_thread_create(&thread2, thread2_worker, 0);
 
-		buf.len = len;
-		buf.base = message;
-
-		uv_stream_t* tcp = req->handle; //这个handle 就是uv_tcp_t 对象指针
-
-		uv_write_t *pwrite_req = new uv_write_t();
-
-		int buf_count = 1;
-		uv_write(pwrite_req, tcp, &buf, buf_count, on_write_end);
+		uv_thread_join(&thread1);
+		uv_thread_join(&thread2);
+		return 0;
 	}
-
-	int main(void) 
-	{
-
-		loop = uv_default_loop();
-
-		uv_tcp_t client;
-
-		uv_tcp_init(loop, &client);
-
-		struct sockaddr_in req_addr;
-		//uv_ip4_addr("127.0.0.1", 1234, &req_addr);
-
-		hostent* pHostent = gethostbyname("www.baidu.com");
-
-		req_addr.sin_family = AF_INET;
-		req_addr.sin_port = htons(80);
-		req_addr.sin_addr = *((struct in_addr *)pHostent->h_addr);
-
-		uv_connect_t connect_req;
-
-		uv_tcp_connect(&connect_req, &client, (sockaddr*)&req_addr, on_connect);
-
-		return uv_run(loop,UV_RUN_DEFAULT);
-	}
-
-
-	/*void main()
-	{
-		uv_loop_t *loop = uv_default_loop();
-
-		uv_tcp_t client;
-		uv_tcp_init(loop, &client);
-
-		int res = 0;
-		sockaddr_in	ClientAddr;
-		hostent* pHostent = 	gethostbyname("192.168.1.102");
-
-		ClientAddr.sin_family = AF_INET;
-		ClientAddr.sin_port = htons(1234);
-		ClientAddr.sin_addr = *((struct in_addr *)pHostent->h_addr);
-
-		uv_connect_t connect;
-		res = uv_tcp_connect(&connect, &client, (sockaddr*)&ClientAddr, on_connect);
-		if (res) {
-			const char *pError = uv_err_name(res);
-			printf("uv_tcp_connect error %s\n", pError);
-			return;
-		}
-
-		uv_run(loop, UV_RUN_DEFAULT);
-	}*/
-
-
 }
+
+
+
 
 
 int main()
 {
+ 	n_pipe_client::main();
+// 
+ 	n_pipe_server::main();
 
-	n_net_tcp::main();
+
+	//win  test meixiaoguo
+	//n_signal::main();
+
+	//n_net_tcp::main();
 
 
 	//n_monitor::main();
